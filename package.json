@@ -13,7 +13,7 @@
     "url": "https://github.com/colonyamerican/fixture-factory.git"
   },
   "dependencies": {
-    "faker": "^3.0.1",
+    "faker": "^4.1.0",
     "babel": "^5.8.21",
     "babel-core": "^5.8.22",
     "babel-eslint": "^4.0.10",
