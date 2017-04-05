@@ -1,7 +1,7 @@
 import faker from 'faker';
 import {extend, isObject, isFunction, cloneDeep, isArray, each} from 'lodash';
 import {EventEmitter} from 'events';
-import {Reference} from './plugins';
+import Reference from './plugins/reference';
 
 class FixtureFactory extends EventEmitter {
 

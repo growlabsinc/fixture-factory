@@ -1,6 +1,6 @@
 import {extend, isString} from 'lodash';
 
-export default class ReferencePlugin {
+class ReferencePlugin {
 
   constructor(fixtureFactory) {
     this.fixtureFactory = fixtureFactory;
@@ -54,3 +54,5 @@ export default class ReferencePlugin {
   }
 
 }
+
+export default ReferencePlugin;

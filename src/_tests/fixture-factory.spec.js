@@ -13,7 +13,7 @@ chai.should();
 
 // load things to test
 import fixtureFactory from '../index.js';
-import {Reference} from '../plugins';
+import Reference from '../plugins/reference';
 import faker from 'faker';
 
 let referencePlugin;
