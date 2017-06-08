@@ -1,291 +1,224 @@
 'use strict';
 
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
+var faker = require('faker');
+var _ = require('lodash');
+var util = require('util');
+var EventEmitter = require('events').EventEmitter;
+var referencePlugin = require('./plugins/reference');
 
-var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol" ? function (obj) { return typeof obj; } : function (obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj; };
+var instance;
 
-var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
+function FixtureFactory() {
+  this.dataModels = {};
+  EventEmitter.call(this);
+  referencePlugin.enable(this);
+}
 
-var _faker = require('faker');
+util.inherits(FixtureFactory, EventEmitter);
 
-var _faker2 = _interopRequireDefault(_faker);
+FixtureFactory.prototype._getFieldModel = function (method) {
+  var transform = !_.isFunction(method) && _.isObject(method) && method.method;
+  return transform ? method : { method: method };
+};
 
-var _lodash = require('lodash');
+FixtureFactory.prototype._handleFunction = function (model, fixture, dataModel) {
+  return model.method.call(null, fixture, model.options || {}, dataModel, faker);
+};
 
-var _events = require('events');
+FixtureFactory.prototype._handleString = function (model) {
+  var callStack = model.method.split('.');
+  var nestedFakerMethod = faker;
+  var isMethod = true;
+  var args = model.args || [];
+  var options = model.options ? _.cloneDeep(model.options) : void 0;
+  var nextMethod;
 
-var _reference = require('./plugins/reference');
-
-var _reference2 = _interopRequireDefault(_reference);
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-
-function _toConsumableArray(arr) { if (Array.isArray(arr)) { for (var i = 0, arr2 = Array(arr.length); i < arr.length; i++) { arr2[i] = arr[i]; } return arr2; } else { return Array.from(arr); } }
-
-function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
-
-function _possibleConstructorReturn(self, call) { if (!self) { throw new ReferenceError("this hasn't been initialised - super() hasn't been called"); } return call && (typeof call === "object" || typeof call === "function") ? call : self; }
-
-function _inherits(subClass, superClass) { if (typeof superClass !== "function" && superClass !== null) { throw new TypeError("Super expression must either be null or a function, not " + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
-
-var FixtureFactory = function (_EventEmitter) {
-  _inherits(FixtureFactory, _EventEmitter);
-
-  function FixtureFactory() {
-    _classCallCheck(this, FixtureFactory);
-
-    var _this = _possibleConstructorReturn(this, (FixtureFactory.__proto__ || Object.getPrototypeOf(FixtureFactory)).call(this));
-
-    _this.dataModels = {};
-    _this.plugins = {};
-
-    _this.plugins.reference = new _reference2.default(_this);
-    return _this;
+  if (options) {
+    console.warn('Passing arguments to faker using the "options" property has been depreciated.');
+    console.warn('Please use "args" property instead.');
+    args.push(options);
   }
 
-  //generators, internals, stuff
-
-  _createClass(FixtureFactory, [{
-    key: '_parseFieldModel',
-    value: function _parseFieldModel(method) {
-      //check if passed method is a shorthhand, if yes parse it to proper field model
-      var isProperFieldModel = !(0, _lodash.isFunction)(method) && (0, _lodash.isObject)(method) && method.method;
-      return isProperFieldModel ? method : { method: method };
+  while (callStack.length) {
+    nextMethod = callStack.shift();
+    if (nestedFakerMethod[nextMethod]) {
+      nestedFakerMethod = nestedFakerMethod[nextMethod];
+    } else {
+      isMethod = false;
+      break;
     }
-  }, {
-    key: '_handleFunction',
-    value: function _handleFunction(model, fixture, dataModel) {
-      return model.method.call(null, fixture, model.args || model.options || {}, dataModel, _faker2.default);
-    }
-  }, {
-    key: '_handleString',
-    value: function _handleString(model) {
+  }
 
-      var callStack = model.method.split('.');
-      var nestedFakerMethod = _faker2.default;
-      var isMethod = true;
-      var args = model.args || [];
-      var options = model.options ? (0, _lodash.cloneDeep)(model.options) : void 0;
-      var nextMethod = void 0;
+  return isMethod ? nestedFakerMethod.apply(nestedFakerMethod, args) : model.method;
+};
 
-      if (options) {
-        console.warn('Passing arguments to faker using the "options" property has been deprecated.');
-        console.warn('Please use "args" property instead.');
-        args.push(options);
-      }
+FixtureFactory.prototype._generateField = function (key, method, fixture, dataModel, generatedFixtures) {
+  var fieldModel = this._getFieldModel(method);
+  var count = 1;
+  var field;
 
-      while (callStack.length) {
-        nextMethod = callStack.shift();
-        if (nestedFakerMethod[nextMethod]) {
-          nestedFakerMethod = nestedFakerMethod[nextMethod];
-        } else {
-          isMethod = false;
-          break;
-        }
-      }
+  this.emit('field:pre', {
+    name: key,
+    model: fieldModel
+  });
 
-      return isMethod ? nestedFakerMethod.apply(undefined, _toConsumableArray(args)) : model.method;
-    }
-  }, {
-    key: '_generateField',
-    value: function _generateField(name, method, fixture, dataModel, generatedFixtures) {
+  switch (typeof fieldModel.method) {
+    case 'function':
+      field = this._handleFunction(fieldModel, fixture, dataModel);
+      break;
 
-      var fieldModel = this._parseFieldModel(method);
+    case 'string':
+      field = this._handleString(fieldModel);
+      break;
 
-      var count = 1;
-      var field = void 0;
+    case 'number':
+    case 'boolean':
+      field = fieldModel.method;
+      break;
 
-      this.emit('field:pre', {
-        name: name,
-        model: fieldModel
-      });
-
-      switch (_typeof(fieldModel.method)) {
-        case 'function':
-          field = this._handleFunction(fieldModel, fixture, dataModel);
-          break;
-
-        case 'string':
-          field = this._handleString(fieldModel);
-          break;
-
-        case 'number':
-        case 'boolean':
-          field = fieldModel.method;
-          break;
-
-        // method is an object so just return it
-        default:
-          if ((0, _lodash.isArray)(fieldModel.method)) {
-            count = fieldModel.method[1] || 1;
-          } else {
-            fieldModel.method = [fieldModel.method];
-          }
-
-          field = this.generate.apply(this, _toConsumableArray(fieldModel.method));
-
-          if (count === 1) {
-            field = field[0];
-          }
-      }
-
-      this.emit('field', {
-        name: name,
-        value: field,
-        model: fieldModel
-      });
-
-      return field;
-    }
-  }, {
-    key: '_generateFixture',
-    value: function _generateFixture(context) {
-      var _this2 = this;
-
-      var properties = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : {};
-      var generatedFixtures = arguments[2];
-
-
-      // check if raw model definition was passed or should we fetch it from the registered ones
-      var dataModel = (0, _lodash.isObject)(context) ? context : this.dataModels[context] || {};
-      var fixture = {};
-      var fieldGenerators = {};
-
-      var name = (0, _lodash.isObject)(context) ? void 0 : context;
-
-      // if user passed additional properties extend the dataModel with them
-      dataModel = (0, _lodash.extend)({}, dataModel, properties);
-
-      this.emit('fixture:pre', {
-        dataModel: dataModel,
-        name: name,
-        properties: properties,
-        generatedFixtures: generatedFixtures
-      });
-
-      (0, _lodash.each)(dataModel, function (value, key) {
-        // if field has a generator function assigned to it, cache it for later
-        if (!(0, _lodash.isFunction)(value) && value && !(0, _lodash.isFunction)(value.method)) {
-          fixture[key] = _this2._generateField(key, value, fixture, dataModel, generatedFixtures);
-        } else {
-          fieldGenerators[key] = value;
-        }
-      });
-
-      (0, _lodash.each)(fieldGenerators, function (fieldGenerator, key) {
-        fixture[key] = _this2._generateField(key, fieldGenerator, fixture, dataModel, generatedFixtures);
-      });
-
-      this.emit('fixture', {
-        fixture: fixture,
-        name: name,
-        properties: properties,
-        generatedFixtures: generatedFixtures
-      });
-
-      return fixture;
-    }
-
-    //api
-
-  }, {
-    key: 'noConflict',
-    value: function noConflict() {
-      return new FixtureFactory();
-    }
-  }, {
-    key: 'getGenerator',
-    value: function getGenerator(key) {
-      var _this3 = this;
-
-      return {
-        generate: function generate() {
-          for (var _len = arguments.length, args = Array(_len), _key = 0; _key < _len; _key++) {
-            args[_key] = arguments[_key];
-          }
-
-          return _this3.generate.apply(_this3, [key].concat(args));
-        },
-        generateOne: function generateOne() {
-          for (var _len2 = arguments.length, args = Array(_len2), _key2 = 0; _key2 < _len2; _key2++) {
-            args[_key2] = arguments[_key2];
-          }
-
-          return _this3.generateOne.apply(_this3, [key].concat(args));
-        }
-      };
-    }
-  }, {
-    key: 'register',
-    value: function register(key, dataModel) {
-      var models = {};
-      var isString = typeof key === 'string';
-
-      //either user is passing k
-      if (isString) {
-        models[key] = dataModel;
+    // method is an object so just return it
+    default:
+      if (_.isArray(fieldModel.method)) {
+        count = fieldModel.method[1] || 1;
       } else {
-        models = key;
+        fieldModel.method = [fieldModel.method];
       }
 
-      (0, _lodash.extend)(this.dataModels, models);
+      field = this.generate.apply(this, fieldModel.method);
 
-      this.emit('registered', models);
-
-      return this;
-    }
-  }, {
-    key: 'reset',
-    value: function reset() {
-      this.unregister();
-    }
-  }, {
-    key: 'unregister',
-    value: function unregister(key) {
-      if (key) {
-        delete this.dataModels[key];
-        this.emit('unregistered', [key]);
-      } else {
-        this.emit('unregistered', Object.keys(this.dataModels));
-        this.dataModels = {};
+      if (count === 1) {
+        field = field[0];
       }
+  }
 
-      return this;
+  this.emit('field', {
+    name: key,
+    value: field,
+    model: fieldModel
+  });
+
+  return field;
+};
+
+FixtureFactory.prototype._generateFixture = function (context, properties, generatedFixtures) {
+  // check if raw model definition was passed or should we fetch it from the registered ones
+  var dataModel = _.isObject(context) ? context : this.dataModels[context] || {};
+  var name = _.isObject(context) ? void 0 : context;
+  var fixture = {};
+  var fieldGenerators = {};
+  var self = this;
+
+  properties = properties || {};
+
+  // if user passed additional properties extend the dataModel with them
+  dataModel = _.extend({}, dataModel, properties);
+
+  this.emit('fixture:pre', {
+    model: dataModel,
+    name: name,
+    properties: properties,
+    generated: generatedFixtures
+  });
+
+  _.each(dataModel, function (value, key) {
+
+    value = properties[key] ? properties[key] : value;
+
+    // if field has a generator function assigned to it, cache it for later
+    if (!_.isFunction(value) && !_.isFunction(value.method)) {
+      fixture[key] = self._generateField(key, value, fixture, dataModel, generatedFixtures);
+    } else {
+      fieldGenerators[key] = value;
     }
-  }, {
-    key: 'generateOne',
-    value: function generateOne(context, properties) {
-      var fixture = this.generate(context, 1, properties)[0];
+  });
 
-      return fixture;
+  _.each(fieldGenerators, function (fieldGenerator, key) {
+    fixture[key] = self._generateField(key, fieldGenerator, fixture, dataModel, generatedFixtures);
+  });
+
+  this.emit('fixture', {
+    fixture: fixture,
+    name: name,
+    properties: properties,
+    generated: generatedFixtures
+  });
+
+  return fixture;
+};
+
+FixtureFactory.prototype.noConflict = function () {
+  return new FixtureFactory();
+};
+
+FixtureFactory.prototype.getGenerator = function (key) {
+  var self = this;
+
+  return {
+    generate: function generate() {
+      self.generate.apply(self, _.union([key], arguments));
+    },
+    generateOne: function generateOne() {
+      self.generateOne.apply(self, _.union([key], arguments));
     }
-  }, {
-    key: 'generate',
-    value: function generate(context) {
-      var count = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : 1;
-      var properties = arguments[2];
+  };
+};
 
+FixtureFactory.prototype.register = function (key, dataModel) {
+  var models = {};
+  var isString = typeof key === 'string';
 
-      // make dev life easier and allow the to call
-      // generate(context, properties)
-      if ((0, _lodash.isObject)(count)) {
-        properties = count;
-        count = 1;
-      }
+  if (isString) {
+    models[key] = dataModel;
+  } else {
+    models = key;
+  }
 
-      var fixtures = [];
+  _.extend(this.dataModels, models);
 
-      while (fixtures.length < count) {
-        fixtures.push(this._generateFixture(context, properties, fixtures));
-      }
+  this.emit('registered', models);
 
-      return fixtures;
-    }
-  }]);
+  return this;
+};
 
-  return FixtureFactory;
-}(_events.EventEmitter);
+FixtureFactory.prototype.reset = function () {
+  this.unregister();
+};
 
-exports.default = new FixtureFactory();
+FixtureFactory.prototype.unregister = function (key) {
+  if (key) {
+    delete this.dataModels[key];
+    this.emit('unregistered', [key]);
+  } else {
+    this.emit('unregistered', Object.keys(this.dataModels));
+    this.dataModels = {};
+  }
+
+  return this;
+};
+
+FixtureFactory.prototype.generateOne = function (context, properties) {
+  var fixture = this.generate(context, 1, properties)[0];
+
+  return fixture;
+};
+
+FixtureFactory.prototype.generate = function (context, count, properties) {
+  var fixtures = [];
+
+  count = count || 1;
+
+  if (_.isObject(count)) {
+    properties = count;
+    count = 1;
+  }
+
+  while (fixtures.length < count) {
+    fixtures.push(this._generateFixture(context, properties, fixtures));
+  }
+
+  return fixtures;
+};
+
+instance = new FixtureFactory();
+
+module.exports = instance;
