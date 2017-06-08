@@ -125,7 +125,7 @@ FixtureFactory.prototype._generateFixture = function (context, properties, gener
     value = properties[key] ? properties[key] : value;
 
     // if field has a generator function assigned to it, cache it for later
-    if (!_.isFunction(value) && !_.isFunction(value.method)) {
+    if (!_.isFunction(value) && value && !_.isFunction(value.method)) {
       fixture[key] = self._generateField(key, value, fixture, dataModel, generatedFixtures);
     } else {
       fieldGenerators[key] = value;
