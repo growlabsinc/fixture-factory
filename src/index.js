@@ -130,7 +130,7 @@ class FixtureFactory extends EventEmitter {
 
     each(dataModel, (value, key) => {
       // if field has a generator function assigned to it, cache it for later
-      if (!isFunction(value) && !isFunction(value.method)) {
+      if (!isFunction(value) && value && !isFunction(value.method)) {
         fixture[key] = this._generateField(
           key,
           value,
